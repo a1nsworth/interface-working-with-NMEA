@@ -96,9 +96,9 @@ class DataGPGGAGPRMC(Data):
         return self._df_formats['GPRMC']
 
     def available_formats(self):
-        return self._df_formats.keys()
+        return list(self._df_formats.keys())
 
-    def get_df_by_key(self, key: str):
+    def get_df_by_key(self, key: str) -> pd.DataFrame | None:
         try:
             return self._df_formats[key]
         except KeyError:

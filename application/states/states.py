@@ -1,14 +1,19 @@
-from application.layouts.layouts import Layout, sg, abstractmethod, TabDataLayout
+from abc import abstractmethod
+
+import PySimpleGUI as sg
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from parsing.data import DataGetterByPath, Singleton
+
+from application.layouts.layouts import TabDataLayout
+from parsing.data import DataGetterByPath
+from patterns.singleton import Singleton
 
 
 class ApplicationState(metaclass=Singleton):
-    def __init__(self, layout: Layout):
+    def __init__(self, layout):
         self._layout = layout
 
     @abstractmethod
-    def update_events(self, window: sg.Window, canvas: FigureCanvasTkAgg, event, value) -> FigureCanvasTkAgg | None:
+    def update_events(self, application, canvas: FigureCanvasTkAgg) -> FigureCanvasTkAgg | None:
         pass
 
     @property
@@ -17,22 +22,32 @@ class ApplicationState(metaclass=Singleton):
 
 
 class TabDataState(ApplicationState):
-    def __init__(self, layout: Layout = TabDataLayout):
-        super().__init__(layout)
+    def __init__(self):
+        super().__init__(TabDataLayout())
         self.__data_class = None
         self.__format_data = None
         self.__from_which_file_to_read = None
+        self.__new_window = None
+        self.clicked_update_table = None
 
-    @staticmethod
-    def __clicked_update_table(window: sg.Window):
-        from_which_file_to_read = window['-DD_READ_FROM_DATA-'].get()
-        format_data = window['-DD_FORMAT_DATA-'].get()
+    def __clicked_update_table(self, application):
+        from_which_file_to_read = application.window['-DD_READ_FROM_DATA-'].get()
+        format_data = application.window['-DD_FORMAT_DATA-'].get()
         data_class = DataGetterByPath().get_data_class_by_path(from_which_file_to_read)
 
         if data_class is None:
             sg.popup_error(f'Не существует представления для файла -> {from_which_file_to_read}')
         if format_data not in data_class.available_formats():
             sg.popup_error(f'У этого представления нет такого типа -> {format_data}')
+        df = data_class.get_df_by_key(format_data)
+
+        self._layout.update_window_with_new_table(application=application, headings=df.columns.tolist(),
+                                                  values=df.values.tolist(),
+                                                  justification='center',
+                                                  auto_size_columns=True,
+                                                  num_rows=40,
+                                                  display_row_numbers=True,
+                                                  )
 
         return data_class, format_data, from_which_file_to_read
 
@@ -64,14 +79,17 @@ class TabDataState(ApplicationState):
                           index=False, sep='\t', )
             sg.popup_ok(f'Ваш файл успешно сохранен! По пути: {path}/{name_file}')
 
-    def update_events(self, window: sg.Window, canvas: FigureCanvasTkAgg, event, value) -> FigureCanvasTkAgg | None:
+    def update_events(self, application, canvas: FigureCanvasTkAgg) -> FigureCanvasTkAgg | None:
         if (
-                event == '-UPDATE_TABLE_DATA-'
+                application.event == '-UPDATE_TABLE_DATA-'
                 or
                 (self.__data_class is None and self.__from_which_file_to_read is None and self.__format_data is None)
         ):
-            self.__data_class, self.__format_data, self.__from_which_file_to_read = self.__clicked_update_table(window)
-        if event == '-SAVE_DF-':
-            self.__clicked_save_table(window, self.__data_class, self.__format_data, self.__from_which_file_to_read)
+            self.__data_class, self.__format_data, self.__from_which_file_to_read = (
+                self.__clicked_update_table(application)
+            )
+        if application.event == '-SAVE_DF-':
+            self.__clicked_save_table(application, self.__data_class, self.__format_data,
+                                      self.__from_which_file_to_read)
 
         return None
